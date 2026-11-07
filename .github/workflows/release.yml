@@ -151,10 +151,16 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
+      # only our artifacts: build-push-action also uploads .dockerbuild records
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: bin-*
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: chart
+          path: dist
       - name: checksums and notes
         run: |
           cd dist && sha256sum * > checksums.txt && cat checksums.txt && cd ..
