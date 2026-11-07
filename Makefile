@@ -41,7 +41,8 @@ build: client
 smoke:
 	@test -n "$(DATABASE_URL)" || (echo "set DATABASE_URL" && exit 1)
 	$(BIN) migrate up
-	PORT=18080 METRICS_ADDR= $(BIN) & echo $$! > $(OUT)/smoke.pid; \
+	rm -rf $(OUT)/smoke-storage
+	PORT=18080 METRICS_ADDR= STORAGE_DIR=$(OUT)/smoke-storage $(BIN) & echo $$! > $(OUT)/smoke.pid; \
 	scripts/smoke.sh http://localhost:18080 aio; rc=$$?; kill $$(cat $(OUT)/smoke.pid); exit $$rc
 
 ## docker: build the all-in-one image (doexam:local)
