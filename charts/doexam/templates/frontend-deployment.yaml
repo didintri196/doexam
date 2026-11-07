@@ -21,7 +21,7 @@ spec:
     metadata:
       labels:
         {{- include "doexam.labels" $ | nindent 8 }}
-        {{- include "doexam.selector" $sel | nindent 8 }}
+        app.kubernetes.io/component: {{ $sel.component }}
     spec:
       serviceAccountName: {{ include "doexam.serviceAccountName" $ }}
       automountServiceAccountToken: false

@@ -24,7 +24,7 @@ spec:
     metadata:
       labels:
         {{- include "doexam.labels" . | nindent 8 }}
-        {{- include "doexam.selector" $sel | nindent 8 }}
+        app.kubernetes.io/component: {{ $sel.component }}
         {{- with .Values.server.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
