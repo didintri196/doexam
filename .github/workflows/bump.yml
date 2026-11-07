@@ -1,0 +1,65 @@
+name: Bump submodules
+
+# Opens (or updates) a pull request moving apps/server and apps/client to the latest
+# main of their repositories, then runs CI on it. Manual or daily.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 22 * * *" # 05:00 WIB
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: move submodules to their latest main
+        id: bump
+        run: |
+          old_s=$(git -C apps/server rev-parse HEAD); old_c=$(git -C apps/client rev-parse HEAD)
+          git submodule update --remote apps/server apps/client
+          new_s=$(git -C apps/server rev-parse HEAD); new_c=$(git -C apps/client rev-parse HEAD)
+          if [[ "$old_s" == "$new_s" && "$old_c" == "$new_c" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"; echo "submodules are up to date"; exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "Naik versi submodule ke \`main\` terbaru. CI (binary aio, image, chart di kind) dijalankan pada PR ini."
+            echo
+            for r in server client; do
+              if [[ $r == server ]]; then o=$old_s n=$new_s; else o=$old_c n=$new_c; fi
+              [[ "$o" == "$n" ]] && continue
+              echo "### $r \`${o:0:7}\` → \`${n:0:7}\`"
+              echo
+              git -C apps/$r log --no-merges --format="- %s ([\`%h\`](https://github.com/didintri196/doexam-$r/commit/%H))" "$o..$n"
+              echo
+            done
+          } > body.md
+          title="chore: bump"
+          [[ "$old_s" != "$new_s" ]] && title="$title server ${old_s:0:7}→${new_s:0:7}"
+          [[ "$old_c" != "$new_c" ]] && title="$title client ${old_c:0:7}→${new_c:0:7}"
+          echo "title=$title" >> "$GITHUB_OUTPUT"
+      - name: open or update the pull request
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C bot/bump-submodules
+          git commit -am "${{ steps.bump.outputs.title }}" -s
+          git push --force origin bot/bump-submodules
+          if gh pr view bot/bump-submodules --json state -q .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit bot/bump-submodules --title "${{ steps.bump.outputs.title }}" --body-file body.md
+          else
+            gh pr create --head bot/bump-submodules --base main --title "${{ steps.bump.outputs.title }}" --body-file body.md
+          fi
+          # pull requests opened with GITHUB_TOKEN do not trigger workflows: start CI explicitly
+          gh workflow run ci.yml --ref bot/bump-submodules
