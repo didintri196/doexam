@@ -82,3 +82,81 @@ jobs:
           docker run --rm --network host -e DATABASE_URL="$DB" doexam:ci migrate up
           docker run -d --name doexam --network host -e DATABASE_URL="$DB" -e APP_ENV=production doexam:ci
           scripts/smoke.sh http://localhost:8080 aio || (docker logs doexam; exit 1)
+
+  chart-lint:
+    name: Helm chart lint & schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: install kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz -C /usr/local/bin kubeconform
+      - name: lint, render and validate both modes and the examples
+        run: |
+          C=charts/doexam
+          helm lint $C --set postgresql.enabled=true
+          helm lint $C --set mode=distributed --set database.url=postgres://u:p@h/db --set ingress.enabled=true
+          render() { helm template doexam $C "$@" | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.30.0; }
+          render --set postgresql.enabled=true
+          render --set mode=distributed --set database.url=postgres://u:p@h/db --set ingress.enabled=true --set redis.enabled=true --set metrics.enabled=true
+          for f in $C/examples/*.yaml; do echo "== $f"; render -f "$f"; done
+      - name: unsafe values are rejected
+        run: |
+          C=charts/doexam
+          expect_fail() { if helm template doexam $C "$@" >/dev/null 2>err.txt; then echo "rendered but should fail: $*"; exit 1; else echo "rejected: $(tail -1 err.txt)"; fi; }
+          expect_fail
+          expect_fail --set mode=x --set postgresql.enabled=true
+          expect_fail --set postgresql.enabled=true --set database.url=x
+          expect_fail --set postgresql.enabled=true --set server.replicas=2
+          expect_fail --set postgresql.enabled=true --set server.replicas=2 --set persistence.accessMode=ReadWriteMany
+          expect_fail --set postgresql.enabled=true --set server.replicas=2 --set persistence.accessMode=ReadWriteMany --set redis.enabled=true --set ingress.enabled=true
+
+  chart-install:
+    name: Helm install on kind (aio & distributed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: docker/setup-buildx-action@v3
+      - name: build the four images
+        run: |
+          docker buildx build --load -f deploy/Dockerfile.aio --build-arg VERSION=ci -t doexam:ci .
+          docker buildx build --load -t doexam-server:ci apps/server
+          docker buildx build --load -f apps/client/Dockerfile.exam -t doexam-exam:ci apps/client
+          docker buildx build --load -f apps/client/Dockerfile.panel -t doexam-panel:ci apps/client
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: doexam
+      - uses: azure/setup-helm@v4
+      - name: load images into kind
+        run: for i in doexam doexam-server doexam-exam doexam-panel; do kind load docker-image $i:ci --name doexam; done
+      - name: aio mode (built-in PostgreSQL)
+        run: |
+          helm install doexam charts/doexam -f charts/doexam/examples/dev.yaml \
+            --set image.registry= --set image.aio.repository=doexam --set image.tag=ci --set image.pullPolicy=Never \
+            --wait --timeout 6m || (kubectl get pods; kubectl describe pods; kubectl logs -l app.kubernetes.io/instance=doexam --all-containers --tail=100; exit 1)
+          kubectl port-forward svc/doexam-aio 18080:8080 & sleep 3
+          scripts/smoke.sh http://localhost:18080 aio
+          kill %1
+          helm uninstall doexam --wait
+          kubectl delete pvc --all --wait
+      - name: distributed mode (built-in PostgreSQL)
+        run: |
+          helm install doexam charts/doexam --set mode=distributed --set postgresql.enabled=true --set config.appEnv=staging \
+            --set image.registry= --set image.server.repository=doexam-server --set image.exam.repository=doexam-exam \
+            --set image.panel.repository=doexam-panel --set image.tag=ci --set image.pullPolicy=Never \
+            --wait --timeout 6m || (kubectl get pods; kubectl describe pods; kubectl logs -l app.kubernetes.io/instance=doexam --all-containers --tail=100; exit 1)
+          kubectl port-forward svc/doexam-server 18080:8080 & kubectl port-forward svc/doexam-exam 18081:8080 & kubectl port-forward svc/doexam-panel 18082:8080 & sleep 3
+          scripts/smoke.sh http://localhost:18080 api
+          # the frontends serve their entry and forward /api to the server
+          curl -fsS http://localhost:18081/exam/ | grep -qi '<html' && echo "  ok    exam client (nginx)"
+          body=$(curl -s -w '\n%{http_code}' http://localhost:18081/api/v1/public/tenant)
+          code=$(echo "$body" | tail -1)
+          if [[ "$code" =~ ^(200|404)$ ]] && echo "$body" | grep -q '"success"'; then
+            echo "  ok    exam nginx forwards /api to the server ($code)"
+          else
+            echo "  FAIL  /api through the exam nginx: $body"; exit 1
+          fi
+          curl -fsS http://localhost:18082/app/ | grep -qi '<html' && echo "  ok    staff panel (nginx)"

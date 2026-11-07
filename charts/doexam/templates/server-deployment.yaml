@@ -1,0 +1,185 @@
+{{- $component := include "doexam.serverComponent" . -}}
+{{- $image := ternary .Values.image.aio .Values.image.server (eq .Values.mode "aio") -}}
+{{- $sel := dict "root" . "component" $component -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "doexam.serverName" . }}
+  labels:
+    {{- include "doexam.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  {{- if not .Values.server.autoscaling.enabled }}
+  replicas: {{ .Values.server.replicas }}
+  {{- end }}
+  {{- if eq .Values.persistence.accessMode "ReadWriteOnce" }}
+  # a ReadWriteOnce volume cannot be attached to the old and the new pod at once
+  strategy:
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "doexam.selector" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "doexam.labels" . | nindent 8 }}
+        {{- include "doexam.selector" $sel | nindent 8 }}
+        {{- with .Values.server.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # restart the pods when the generated secrets change
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.server.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "doexam.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # the server waits up to 30 s for imports and cache warm-ups on shutdown
+      terminationGracePeriodSeconds: 40
+      {{- if .Values.server.migrations.enabled }}
+      initContainers:
+        - name: migrate
+          image: {{ include "doexam.image" (dict "root" . "image" $image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate", "up"]
+          env:
+            - name: APP_ENV
+              value: {{ .Values.config.appEnv | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "doexam.databaseSecretName" . }}
+                  key: {{ include "doexam.databaseSecretKey" . }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+      {{- end }}
+      containers:
+        - name: doexam
+          image: {{ include "doexam.image" (dict "root" . "image" $image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          ports:
+            - name: http
+              containerPort: 8080
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+            {{- end }}
+          env:
+            - name: PORT
+              value: "8080"
+            - name: APP_ENV
+              value: {{ .Values.config.appEnv | quote }}
+            - name: STORAGE_DIR
+              value: /app/data/storage
+            - name: AUTH_SESSION_TTL
+              value: {{ .Values.config.authSessionTTL | quote }}
+            - name: AUTH_CACHE_TTL
+              value: {{ .Values.config.authCacheTTL | quote }}
+            - name: CONTENT_CACHE_MB
+              value: {{ .Values.config.contentCacheMB | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "doexam.databaseSecretName" . }}
+                  key: {{ include "doexam.databaseSecretKey" . }}
+            - name: MEDIA_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "doexam.mediaSecretName" . }}
+                  key: {{ include "doexam.mediaSecretKey" . }}
+            {{- if .Values.redis.enabled }}
+            - name: REDIS_URL
+              value: {{ printf "redis://%s:6379/0" (include "doexam.component" (dict "root" . "component" "redis")) | quote }}
+            {{- else if or .Values.redis.url .Values.redis.existingSecret }}
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.redis.existingSecret | default (include "doexam.secretName" .) }}
+                  key: {{ ternary .Values.redis.existingSecretKey "redis-url" (not (empty .Values.redis.existingSecret)) }}
+            {{- end }}
+            {{- if .Values.metrics.enabled }}
+            - name: METRICS_ADDR
+              value: {{ printf "0.0.0.0:%v" .Values.metrics.port | quote }}
+            - name: METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "doexam.secretName" . }}
+                  key: metrics-token
+            {{- end }}
+            {{- if .Values.config.otel.endpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.config.otel.endpoint | quote }}
+            {{- end }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.config.otel.serviceName | quote }}
+            {{- with .Values.server.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.server.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          {{- with (include "doexam.serverResources" .) }}
+          resources:
+            {{- . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (include "doexam.component" (dict "root" . "component" "data")) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.server.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

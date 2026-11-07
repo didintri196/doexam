@@ -1,0 +1,38 @@
+{{- /* Renders nothing: fails the install/upgrade on unsafe or ambiguous values. */ -}}
+{{- if not (has .Values.mode (list "aio" "distributed")) -}}
+{{- fail (printf "mode must be aio or distributed, got %q" .Values.mode) -}}
+{{- end -}}
+
+{{- $db := 0 -}}
+{{- if .Values.postgresql.enabled }}{{ $db = add1 $db }}{{ end -}}
+{{- if .Values.database.url }}{{ $db = add1 $db }}{{ end -}}
+{{- if .Values.database.existingSecret }}{{ $db = add1 $db }}{{ end -}}
+{{- if eq $db 0 -}}
+{{- fail "a database is required: set database.url, database.existingSecret, or postgresql.enabled=true (development/small installs)" -}}
+{{- end -}}
+{{- if gt $db 1 -}}
+{{- fail "set only one of database.url, database.existingSecret and postgresql.enabled" -}}
+{{- end -}}
+
+{{- if not (has .Values.server.resourcesPreset (list "none" "small" "medium" "large")) -}}
+{{- fail (printf "server.resourcesPreset must be none, small, medium or large, got %q" .Values.server.resourcesPreset) -}}
+{{- end -}}
+
+{{- if include "doexam.serverScaled" . -}}
+{{- if and .Values.persistence.enabled (ne .Values.persistence.accessMode "ReadWriteMany") -}}
+{{- fail "more than one server pod needs persistence.accessMode=ReadWriteMany (uploaded files live on this volume); see README \"Scaling\"" -}}
+{{- end -}}
+{{- if not .Values.persistence.enabled -}}
+{{- fail "more than one server pod needs persistence.enabled=true with a ReadWriteMany volume (uploaded files must be shared)" -}}
+{{- end -}}
+{{- if not (include "doexam.hasRedis" .) -}}
+{{- fail "more than one server pod needs Redis (redis.enabled, redis.url or redis.existingSecret) to share the item content cache" -}}
+{{- end -}}
+{{- if and .Values.ingress.enabled (not .Values.ingress.sticky) -}}
+{{- fail "more than one server pod needs ingress.sticky=true: one-time import credentials stay in the pod that ran the import" -}}
+{{- end -}}
+{{- end -}}
+
+{{- if and .Values.metrics.serviceMonitor.enabled (not .Values.metrics.enabled) -}}
+{{- fail "metrics.serviceMonitor.enabled needs metrics.enabled=true" -}}
+{{- end -}}

@@ -1,0 +1,19 @@
+apiVersion: v2
+name: doexam
+description: DoExam — open source exam platform (CBT). Runs as one all-in-one Deployment or as separate server, exam client and panel.
+type: application
+# version and appVersion are set to the product version by the release workflow
+version: 0.0.0-dev
+appVersion: "0.0.0-dev"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/didintri196/doexam
+sources:
+  - https://github.com/didintri196/doexam
+  - https://github.com/didintri196/doexam-server
+  - https://github.com/didintri196/doexam-client
+keywords: [exam, cbt, assessment, education]
+maintainers:
+  - name: didintri196
+    url: https://github.com/didintri196
+annotations:
+  artifacthub.io/license: AGPL-3.0-only

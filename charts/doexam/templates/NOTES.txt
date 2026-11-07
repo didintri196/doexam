@@ -1,0 +1,31 @@
+DoExam {{ .Chart.AppVersion }} is installed in {{ .Values.mode }} mode.
+
+{{- if .Values.ingress.enabled }}
+{{- $scheme := ternary "https" "http" (not (empty .Values.ingress.tls)) }}
+{{- range .Values.ingress.hosts }}
+
+  Staff panel:  {{ $scheme }}://{{ .host }}/app/
+  Exam client:  {{ $scheme }}://{{ .host }}/exam/
+{{- end }}
+{{- else }}
+
+No ingress. To open it from your machine:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ if eq .Values.mode "aio" }}{{ include "doexam.serverName" . }}{{ else }}{{ include "doexam.component" (dict "root" . "component" "exam") }}{{ end }} 8080:8080
+
+  Staff panel:  http://localhost:8080/app/
+  Exam client:  http://localhost:8080/exam/
+{{- end }}
+
+First run: open /app/setup to create the institution and the first administrator.
+{{- if .Values.postgresql.enabled }}
+
+The built-in PostgreSQL is meant for development and small installs (one pod, no
+backups). Back it up yourself or use an external database for real exams.
+{{- end }}
+{{- if and .Values.persistence.enabled (eq .Values.persistence.accessMode "ReadWriteOnce") }}
+
+Uploaded files use a ReadWriteOnce volume: the server runs as one pod and is updated
+with the Recreate strategy (a short pause during upgrades). Schedule upgrades outside
+exam sessions.
+{{- end }}
