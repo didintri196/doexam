@@ -1,0 +1,39 @@
+# DoExam all-in-one image: the server binary with the frontend embedded (/exam/, /app/).
+# Built from the repository root with the submodules checked out:
+#   docker build -f deploy/Dockerfile.aio --build-arg VERSION=... -t doexam .
+# The node and go stages run on the build machine; Go cross-compiles for the target.
+
+FROM --platform=$BUILDPLATFORM node:22-alpine AS client
+WORKDIR /src
+COPY apps/client/package.json apps/client/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY apps/client/ ./
+ARG TAG=dev
+ENV APP_VERSION=${TAG}
+RUN npm run build && node scripts/check-size.mjs
+COPY scripts/precompress.mjs /tmp/precompress.mjs
+RUN node /tmp/precompress.mjs dist/all
+
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS server
+ARG VERSION=dev
+ARG TARGETOS=linux
+ARG TARGETARCH
+WORKDIR /src
+COPY apps/server/go.mod apps/server/go.sum ./
+RUN go mod download
+COPY apps/server/ ./
+COPY --from=client /src/dist/all/ ./app/server/web/dist/
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
+    -ldflags "-s -w -X main.version=${VERSION}" -o /out/doexam ./app/server
+
+FROM alpine:3.22
+RUN apk --no-cache add ca-certificates tzdata && adduser -D -H -u 10001 doexam \
+    && mkdir -p /app/data/storage && chown -R doexam /app/data
+WORKDIR /app
+ENV STORAGE_DIR=/app/data/storage
+COPY --from=server /out/doexam /usr/local/bin/doexam
+USER 10001
+EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD wget -qO- http://127.0.0.1:8080/healthz || exit 1
+ENTRYPOINT ["doexam"]
+CMD ["serve"]

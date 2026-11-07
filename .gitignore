@@ -16,3 +16,6 @@ CLAUDE.md
 # Local secrets
 **/.env.local
 .env
+
+# Runtime data from local runs (uploads, generated media signing key)
+data/
