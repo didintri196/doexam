@@ -1,0 +1,18 @@
+# Local only (not published): planning docs and agent instructions
+DOCS/
+AGENTS.md
+CLAUDE.md
+
+# OS / tools
+.DS_Store
+.playwright-mcp/
+.idea/
+.vscode/
+
+# Build output
+/dist/
+/out/
+
+# Local secrets
+**/.env.local
+.env

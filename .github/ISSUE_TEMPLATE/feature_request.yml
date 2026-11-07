@@ -1,0 +1,27 @@
+name: Usulan fitur
+description: Ide atau kebutuhan baru untuk DoExam
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Masalah yang ingin diselesaikan
+      description: Ceritakan situasinya. Siapa penggunanya (admin, penyusun soal, pengawas, peserta) dan apa kesulitannya?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Usulan solusi
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatif yang sudah dipertimbangkan
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Kontribusi
+      options:
+        - label: Saya bersedia membantu mengerjakannya

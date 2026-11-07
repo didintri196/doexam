@@ -1,0 +1,6 @@
+[submodule "apps/server"]
+	path = apps/server
+	url = https://github.com/didintri196/doexam-server.git
+[submodule "apps/client"]
+	path = apps/client
+	url = https://github.com/didintri196/doexam-client.git

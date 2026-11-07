@@ -1,0 +1,58 @@
+name: Laporan bug
+description: Sesuatu tidak berjalan sebagaimana mestinya
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Terima kasih sudah melapor. **Celah keamanan jangan dilaporkan di sini**, gunakan [laporan privat](https://github.com/didintri196/doexam/security/advisories/new).
+        Hapus data pribadi peserta (nama, NIK, jawaban) dari log dan screenshot.
+  - type: input
+    id: version
+    attributes:
+      label: Versi DoExam
+      description: Tag rilis atau commit (lihat log startup atau `doexam version`).
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Cara pemasangan
+      options: [Binary Linux, Docker Compose, Helm (aio), Helm (distributed), Dari source]
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Bagian
+      options: [Exam client (peserta), Panel staf, Monitor pengawas, Bank soal / impor, Penilaian / laporan, Server / API, Instalasi / Helm, Lainnya]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Apa yang terjadi?
+      description: Jelaskan masalahnya dan apa yang Anda harapkan.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Langkah reproduksi
+      placeholder: |
+        1. Buka …
+        2. Klik …
+        3. Muncul …
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log / screenshot
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Lingkungan
+      placeholder: Ubuntu 24.04, PostgreSQL 16, Chrome 130, ±300 peserta
