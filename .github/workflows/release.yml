@@ -17,6 +17,7 @@ env:
 jobs:
   meta:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.v.outputs.version }}
       prerelease: ${{ steps.v.outputs.prerelease }}
@@ -37,6 +38,7 @@ jobs:
   binaries:
     needs: meta
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       matrix:
         arch: [amd64, arm64]
@@ -75,6 +77,7 @@ jobs:
   images:
     needs: meta
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       matrix:
         include:
@@ -124,6 +127,7 @@ jobs:
   chart:
     needs: [meta, images]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
@@ -141,15 +145,22 @@ jobs:
   release:
     needs: [meta, binaries, images, chart]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
+      # only our artifacts: build-push-action also uploads .dockerbuild records
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: bin-*
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: chart
+          path: dist
       - name: checksums and notes
         run: |
           cd dist && sha256sum * > checksums.txt && cat checksums.txt && cd ..
