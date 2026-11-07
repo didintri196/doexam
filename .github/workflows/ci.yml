@@ -17,6 +17,7 @@ jobs:
   binary:
     name: aio binary + smoke test
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16-alpine
@@ -50,6 +51,7 @@ jobs:
   image:
     name: aio image + smoke test
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16-alpine
@@ -87,6 +89,7 @@ jobs:
   chart-lint:
     name: Helm chart lint & schema
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
@@ -116,6 +119,7 @@ jobs:
   chart-install:
     name: Helm install on kind (aio & distributed)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
