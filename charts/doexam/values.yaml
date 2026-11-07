@@ -1,0 +1,194 @@
+# DoExam Helm chart. See README.md for the two modes and examples.
+
+# aio: one Deployment running the all-in-one image (API + /exam/ + /app/).
+# distributed: separate Deployments for the API server, the exam client and the panel.
+mode: aio
+
+image:
+  registry: ghcr.io
+  # images are tagged with the product version; empty = .Chart.AppVersion
+  tag: ""
+  pullPolicy: IfNotPresent
+  aio:
+    repository: didintri196/doexam
+  server:
+    repository: didintri196/doexam-server
+  exam:
+    repository: didintri196/doexam-exam
+  panel:
+    repository: didintri196/doexam-panel
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# ── Server (aio, or the API server in distributed mode) ─────────────────────
+server:
+  # >1 needs shared storage, Redis and sticky sessions (see README "Scaling")
+  replicas: 1
+  # small (≤1,000 participants), medium (≤2,000), large (≤3,000 with a 1-minute login wave)
+  # or none to use `resources` only. Sizes come from apps/server/LOADTEST.md.
+  resourcesPreset: small
+  resources: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  # run `doexam migrate up` in an init container before the server starts (advisory
+  # lock: safe with several pods starting at once)
+  migrations:
+    enabled: true
+  extraEnv: []
+  extraEnvFrom: []
+
+# Environment of the server (see the server README for every variable)
+config:
+  appEnv: production
+  authSessionTTL: 12h
+  authCacheTTL: 30s
+  contentCacheMB: 64
+  otel:
+    endpoint: ""
+    serviceName: doexam-api
+
+# ── Frontend (distributed mode only) ─────────────────────────────────────────
+frontend:
+  exam:
+    replicas: 2
+    resources:
+      requests: { cpu: 50m, memory: 32Mi }
+      limits: { cpu: 500m, memory: 128Mi }
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 70
+  panel:
+    replicas: 1
+    resources:
+      requests: { cpu: 50m, memory: 32Mi }
+      limits: { cpu: 500m, memory: 128Mi }
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ── Database ─────────────────────────────────────────────────────────────────
+# External PostgreSQL 16 (recommended for production): give `url`, or an existing Secret.
+database:
+  url: ""
+  existingSecret: ""
+  existingSecretKey: database-url
+
+# Built-in PostgreSQL 16 StatefulSet for development and small installs (not HA).
+postgresql:
+  enabled: false
+  image:
+    repository: postgres
+    tag: 16-alpine
+  database: doexam
+  username: doexam
+  # empty = generated once and kept across upgrades
+  password: ""
+  persistence:
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits: { cpu: "2", memory: 2Gi }
+
+# ── Redis (optional: item content cache shared between server pods) ─────────
+redis:
+  # built-in Redis Deployment (allkeys-lru, no persistence)
+  enabled: false
+  image:
+    repository: redis
+    tag: 7-alpine
+  maxMemory: 256mb
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 384Mi }
+  # or an external Redis: redis://host:6379/0 (ignored when enabled)
+  url: ""
+  existingSecret: ""
+  existingSecretKey: redis-url
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+# Media links are signed; every server pod must use the same key. Empty = generated
+# once and kept across upgrades (changing it breaks links in open exams).
+mediaSigningKey:
+  existingSecret: ""
+  existingSecretKey: media-signing-key
+
+# ── Uploaded files (STORAGE_DIR) ─────────────────────────────────────────────
+persistence:
+  enabled: true
+  # ReadWriteMany (NFS, CephFS, Longhorn RWX, EFS…) is required for more than one server pod
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  storageClass: ""
+  existingClaim: ""
+
+# ── Networking ───────────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  # cookie affinity (ingress-nginx annotations are added for you): required for more than
+  # one server pod, because one-time import credentials live in the pod that ran the import
+  sticky: false
+  hosts:
+    - host: doexam.local
+  tls: []
+  #  - secretName: doexam-tls
+  #    hosts: [doexam.local]
+
+# ── Metrics (Prometheus) ─────────────────────────────────────────────────────
+metrics:
+  enabled: false
+  port: 9464
+  # bearer token for /metrics; empty = generated once
+  token: ""
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
+
+# ── Pod security & disruption ────────────────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+podDisruptionBudget:
+  # created when the server (or a frontend) has more than one replica
+  enabled: true
+  maxUnavailable: 1
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}

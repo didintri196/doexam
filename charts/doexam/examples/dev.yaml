@@ -1,0 +1,7 @@
+# Try it on a laptop cluster (kind, minikube, k3d): built-in PostgreSQL, no ingress.
+#   helm install doexam oci://ghcr.io/didintri196/charts/doexam -f dev.yaml
+#   kubectl port-forward svc/doexam-aio 8080:8080   → http://localhost:8080/app/setup
+postgresql:
+  enabled: true
+config:
+  appEnv: staging

@@ -1,0 +1,65 @@
+{{- if .Values.ingress.enabled }}
+{{- $server := include "doexam.serverName" . -}}
+{{- $port := .Values.service.port -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "doexam.fullname" . }}
+  labels:
+    {{- include "doexam.labels" . | nindent 4 }}
+  annotations:
+    # item audio up to 20 MiB, imports up to 5 MiB (ingress-nginx; ignored by others)
+    nginx.ingress.kubernetes.io/proxy-body-size: 24m
+    {{- if .Values.ingress.sticky }}
+    nginx.ingress.kubernetes.io/affinity: cookie
+    nginx.ingress.kubernetes.io/session-cookie-name: doexam-route
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "43200"
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- if eq $.Values.mode "aio" }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $server }}
+                port: { number: {{ $port }} }
+          {{- else }}
+          {{- range $p := list "/api" "/healthz" "/readyz" }}
+          - path: {{ $p }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $server }}
+                port: { number: {{ $port }} }
+          {{- end }}
+          - path: /app
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "doexam.component" (dict "root" $ "component" "panel") }}
+                port: { number: 8080 }
+          # /exam, /assets and / (redirected to /exam/ by the exam nginx)
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "doexam.component" (dict "root" $ "component" "exam") }}
+                port: { number: 8080 }
+          {{- end }}
+    {{- end }}
+{{- end }}

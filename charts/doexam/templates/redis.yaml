@@ -1,0 +1,69 @@
+{{- if .Values.redis.enabled }}
+{{- $name := include "doexam.component" (dict "root" . "component" "redis") -}}
+{{- $sel := dict "root" . "component" "redis" -}}
+# Built-in Redis for the shared item content cache: no persistence (the cache refills
+# itself from PostgreSQL), least-recently-used eviction.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "doexam.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  selector:
+    {{- include "doexam.selector" $sel | nindent 4 }}
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "doexam.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "doexam.selector" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "doexam.labels" . | nindent 8 }}
+        app.kubernetes.io/component: {{ $sel.component }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          args: ["--maxmemory", {{ .Values.redis.maxMemory | quote }}, "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec: { command: ["redis-cli", "ping"] }
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: redis }
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+{{- end }}

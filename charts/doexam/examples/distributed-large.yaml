@@ -1,0 +1,37 @@
+# Large exams: 3 API pods behind sticky sessions, frontends autoscaled, shared storage and
+# Redis, Prometheus Operator scraping. Needs a ReadWriteMany storage class.
+mode: distributed
+database:
+  existingSecret: doexam-db
+server:
+  replicas: 3
+  resourcesPreset: large
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/component: server
+frontend:
+  exam:
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 10 }
+persistence:
+  accessMode: ReadWriteMany
+  storageClass: nfs-client
+  size: 50Gi
+redis:
+  enabled: true
+ingress:
+  enabled: true
+  className: nginx
+  sticky: true
+  hosts:
+    - host: ujian.example.com
+  tls:
+    - secretName: doexam-tls
+      hosts: [ujian.example.com]
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true

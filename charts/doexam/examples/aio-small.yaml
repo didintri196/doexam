@@ -1,0 +1,18 @@
+# One server for a school (≤1,000 participants): all-in-one image, external PostgreSQL.
+#   kubectl create secret generic doexam-db --from-literal=database-url='postgres://doexam:...@db:5432/doexam?sslmode=require'
+#   helm install doexam oci://ghcr.io/didintri196/charts/doexam -f aio-small.yaml
+mode: aio
+database:
+  existingSecret: doexam-db
+server:
+  resourcesPreset: small
+persistence:
+  size: 20Gi
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: ujian.sekolah.sch.id
+  tls:
+    - secretName: doexam-tls
+      hosts: [ujian.sekolah.sch.id]

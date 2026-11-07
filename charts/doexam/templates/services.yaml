@@ -1,0 +1,60 @@
+{{- $server := include "doexam.serverComponent" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "doexam.serverName" . }}
+  labels:
+    {{- include "doexam.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $server }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- if and (include "doexam.serverScaled" .) (not .Values.ingress.enabled) }}
+  # without an ingress, keep a client on one pod (one-time import credentials are per pod)
+  sessionAffinity: ClientIP
+  {{- end }}
+  selector:
+    {{- include "doexam.selector" (dict "root" . "component" $server) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+---
+{{- if .Values.metrics.enabled }}
+# internal only: Prometheus scrapes it (bearer token), it is never exposed by the ingress
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "doexam.component" (dict "root" . "component" "metrics") }}
+  labels:
+    {{- include "doexam.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "doexam.selector" (dict "root" . "component" $server) | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: metrics
+---
+{{- end }}
+{{- if eq .Values.mode "distributed" }}
+{{- range $entry := list "exam" "panel" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "doexam.component" (dict "root" $ "component" $entry) }}
+  labels:
+    {{- include "doexam.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $entry }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "doexam.selector" (dict "root" $ "component" $entry) | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+{{- end }}
+{{- end }}

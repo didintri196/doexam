@@ -1,0 +1,49 @@
+{{- /* HorizontalPodAutoscalers and PodDisruptionBudgets for the server and the frontends */ -}}
+{{- $items := list (dict "component" (include "doexam.serverComponent" .) "name" (include "doexam.serverName" .) "replicas" .Values.server.replicas "hpa" .Values.server.autoscaling) -}}
+{{- if eq .Values.mode "distributed" -}}
+{{- range $entry := list "exam" "panel" -}}
+{{- $cfg := index $.Values.frontend $entry -}}
+{{- $items = append $items (dict "component" $entry "name" (include "doexam.component" (dict "root" $ "component" $entry)) "replicas" $cfg.replicas "hpa" $cfg.autoscaling) -}}
+{{- end -}}
+{{- end -}}
+{{- range $it := $items }}
+{{- if $it.hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $it.name }}
+  labels:
+    {{- include "doexam.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $it.component }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $it.name }}
+  minReplicas: {{ $it.hpa.minReplicas }}
+  maxReplicas: {{ $it.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $it.hpa.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- if and $.Values.podDisruptionBudget.enabled (or $it.hpa.enabled (gt (int $it.replicas) 1)) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $it.name }}
+  labels:
+    {{- include "doexam.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $it.component }}
+spec:
+  maxUnavailable: {{ $.Values.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "doexam.selector" (dict "root" $ "component" $it.component) | nindent 6 }}
+{{- end }}
+{{- end }}
