@@ -1,0 +1,49 @@
+# DoExam all-in-one with PostgreSQL 16:
+#   docker compose -f docker-compose.aio.yml up -d
+# then open http://localhost:8080/app/setup (first institution and admin).
+# Change POSTGRES_PASSWORD (and DATABASE_URL) before using it for real exams.
+name: doexam
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: doexam
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ganti-password-ini}
+      POSTGRES_DB: doexam
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U doexam"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # one-shot: applies the embedded migrations, then doexam starts
+  migrate:
+    image: ghcr.io/didintri196/doexam:${DOEXAM_VERSION:-latest}
+    command: ["migrate", "up"]
+    environment:
+      DATABASE_URL: postgres://doexam:${POSTGRES_PASSWORD:-ganti-password-ini}@postgres:5432/doexam?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  doexam:
+    image: ghcr.io/didintri196/doexam:${DOEXAM_VERSION:-latest}
+    ports:
+      - "${DOEXAM_PORT:-8080}:8080"
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgres://doexam:${POSTGRES_PASSWORD:-ganti-password-ini}@postgres:5432/doexam?sslmode=disable
+    volumes:
+      - storage:/app/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  storage:

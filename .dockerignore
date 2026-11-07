@@ -1,0 +1,16 @@
+.git
+**/.git
+DOCS/
+out/
+.playwright-mcp/
+**/node_modules
+apps/client/dist
+apps/server/data
+apps/server/tmp
+apps/server/bin
+apps/server/app/server/web/dist/*
+!apps/server/app/server/web/dist/.keep
+apps/server/loadtest
+**/.env
+**/.env.*
+!**/.env.example
