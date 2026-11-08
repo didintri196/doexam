@@ -36,7 +36,8 @@ Migrasi database dijalankan otomatis oleh init container (`doexam migrate up`) s
 | `mode` | `aio` | `aio` atau `distributed` |
 | `image.registry` / `image.tag` | `ghcr.io` / `appVersion` | Semua image di-tag dengan versi produk |
 | `server.replicas` | `1` | Lebih dari 1 butuh syarat di bagian [Penskalaan](#penskalaan) |
-| `server.resourcesPreset` | `small` | `small` (≤1.000 peserta), `medium` (≤2.000), `large` (≤3.000 dengan login 1 menit), atau `none` (pakai `server.resources`) |
+| `server.resources` | req 500m/256Mi, lim 1/512Mi | Resource container server. Key yang tidak di-set tetap memakai default; `null` menghapus key (mis. `limits.cpu: null`). Acuan: ≤1.000 peserta = default; ≤2.000 = req 1/512Mi, lim 2/1Gi; ≤3.000 dengan login 1 menit = req 2/1Gi, lim 4/2Gi |
+| `server.migrations.resources` | req 50m/64Mi, lim 500m/256Mi | Resource init container migrasi |
 | `server.autoscaling.*` | mati | HPA server (syarat sama dengan replika > 1) |
 | `config.appEnv` | `production` | `APP_ENV` |
 | `config.authCacheTTL` | `30s` | Cache validasi login |

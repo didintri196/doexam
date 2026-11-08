@@ -26,10 +26,14 @@ fullnameOverride: ""
 server:
   # >1 needs shared storage, Redis and sticky sessions (see README "Scaling")
   replicas: 1
-  # small (≤1,000 participants), medium (≤2,000), large (≤3,000 with a 1-minute login wave)
-  # or none to use `resources` only. Sizes come from apps/server/LOADTEST.md.
-  resourcesPreset: small
-  resources: {}
+  # Container resources. Keys you set replace only those keys; the rest keep these defaults
+  # (sized for ≤1,000 participants). From apps/server/LOADTEST.md:
+  #   ≤2,000 participants: requests cpu 1, memory 512Mi; limits cpu 2, memory 1Gi
+  #   ≤3,000 with a 1-minute login wave: requests cpu 2, memory 1Gi; limits cpu 4, memory 2Gi
+  # Set a key to null to drop it (e.g. limits.cpu: null for no CPU limit).
+  resources:
+    requests: { cpu: 500m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
   autoscaling:
     enabled: false
     minReplicas: 2
@@ -45,6 +49,10 @@ server:
   # lock: safe with several pods starting at once)
   migrations:
     enabled: true
+    # resources of the `doexam migrate up` init container
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { cpu: 500m, memory: 256Mi }
   extraEnv: []
   extraEnvFrom: []
 

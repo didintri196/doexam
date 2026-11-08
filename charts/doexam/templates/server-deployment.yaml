@@ -61,9 +61,10 @@ spec:
                   key: {{ include "doexam.databaseSecretKey" . }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- with .Values.server.migrations.resources }}
           resources:
-            requests: { cpu: 50m, memory: 64Mi }
-            limits: { cpu: 500m, memory: 256Mi }
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
       {{- end }}
       containers:
         - name: doexam
@@ -146,9 +147,9 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
-          {{- with (include "doexam.serverResources" .) }}
+          {{- with .Values.server.resources }}
           resources:
-            {{- . | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
           {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
