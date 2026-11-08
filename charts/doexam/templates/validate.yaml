@@ -14,8 +14,8 @@
 {{- fail "set only one of database.url, database.existingSecret and postgresql.enabled" -}}
 {{- end -}}
 
-{{- if not (has .Values.server.resourcesPreset (list "none" "small" "medium" "large")) -}}
-{{- fail (printf "server.resourcesPreset must be none, small, medium or large, got %q" .Values.server.resourcesPreset) -}}
+{{- if hasKey .Values.server "resourcesPreset" -}}
+{{- fail "server.resourcesPreset was removed: set server.resources (requests/limits) instead; unset keys keep the chart defaults" -}}
 {{- end -}}
 
 {{- if include "doexam.serverScaled" . -}}

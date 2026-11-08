@@ -5,7 +5,9 @@ mode: aio
 database:
   existingSecret: doexam-db
 server:
-  resourcesPreset: small
+  resources:
+    requests: { cpu: 500m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
 persistence:
   size: 20Gi
 ingress:

@@ -100,22 +100,6 @@ so dry runs show a fresh value.
 {{- end -}}
 {{- end -}}
 
-{{/* resources: explicit `resources` win over the preset */}}
-{{- define "doexam.serverResources" -}}
-{{- if .Values.server.resources -}}
-{{- toYaml .Values.server.resources -}}
-{{- else if eq .Values.server.resourcesPreset "small" -}}
-requests: { cpu: 500m, memory: 256Mi }
-limits: { cpu: "1", memory: 512Mi }
-{{- else if eq .Values.server.resourcesPreset "medium" -}}
-requests: { cpu: "1", memory: 512Mi }
-limits: { cpu: "2", memory: 1Gi }
-{{- else if eq .Values.server.resourcesPreset "large" -}}
-requests: { cpu: "2", memory: 1Gi }
-limits: { cpu: "4", memory: 2Gi }
-{{- end -}}
-{{- end -}}
-
 {{/* the server is scaled out (more than one pod at a time) */}}
 {{- define "doexam.serverScaled" -}}
 {{- if or (gt (int .Values.server.replicas) 1) .Values.server.autoscaling.enabled -}}true{{- end -}}
